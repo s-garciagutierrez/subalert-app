@@ -1,0 +1,780 @@
+<!DOCTYPE html>
+<html lang="es" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SubAlert - Alertas Visuales de Vencimiento de Suscripciones</title>
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+    
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['"Plus Jakarta Sans"', 'sans-serif'],
+                        mono: ['"JetBrains Mono"', 'monospace'],
+                    },
+                    colors: {
+                        brand: {
+                            50: '#eef2ff',
+                            100: '#e0e7ff',
+                            500: '#6366f1',
+                            600: '#4f46e5',
+                            700: '#4338ca',
+                            900: '#312e81',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col font-sans selection:bg-indigo-500 selection:text-white">
+
+    <!-- Top Toast Container -->
+    <div id="toast-container" class="fixed top-5 right-5 z-50 flex flex-col gap-2 max-w-sm w-full pointer-events-auto"></div>
+
+    <!-- FULLSCREEN VISUAL ALARM OVERLAY MODAL -->
+    <div id="alarm-overlay-modal" class="fixed inset-0 z-50 bg-black/85 backdrop-blur-xl hidden flex-col items-center justify-center p-4 animate-in fade-in duration-300">
+        <div class="max-w-lg w-full bg-slate-900 border-2 border-red-500 rounded-3xl p-8 shadow-[0_0_80px_rgba(239,68,68,0.6)] text-center relative overflow-hidden animate-pulse-glow-red">
+            <!-- Animated background glow -->
+            <div class="absolute -top-24 -left-24 w-48 h-48 bg-red-600/30 rounded-full blur-3xl pointer-events-none"></div>
+            <div class="absolute -bottom-24 -right-24 w-48 h-48 bg-orange-600/30 rounded-full blur-3xl pointer-events-none"></div>
+
+            <div class="w-20 h-20 bg-red-500/20 text-red-500 rounded-3xl mx-auto flex items-center justify-center mb-5 animate-bell-ring border border-red-500/40">
+                <svg class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                </svg>
+            </div>
+
+            <span class="inline-block px-3 py-1 rounded-full text-xs font-black tracking-widest uppercase bg-red-500 text-white mb-2 shadow-sm">
+                ¡ALARMA ACÚSTICA DE VENCIMIENTO!
+            </span>
+
+            <h2 id="alarm-service-name" class="text-3xl font-extrabold text-white mt-1 mb-1">Netflix Premium</h2>
+            <div id="alarm-service-cost" class="text-2xl font-black text-rose-400 mb-3">17.99 €</div>
+
+            <div id="alarm-urgency-badge" class="inline-block px-4 py-1.5 rounded-full text-sm font-bold bg-red-950/80 text-red-200 border border-red-500/60 mb-3">
+                ¡Vence en 2 días!
+            </div>
+            
+            <p id="alarm-renewal-date" class="text-sm text-slate-300 font-mono mb-2">Fecha programada: 2026-10-23</p>
+            <p id="alarm-service-note" class="text-xs text-slate-400 italic mb-6 hidden"></p>
+
+            <!-- Alarm Action Buttons -->
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-6">
+                <button type="button" 
+                        onclick="window.notifManager.dismissActiveAlarm()" 
+                        class="px-4 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-sm transition border border-slate-700 flex items-center justify-center gap-1.5">
+                    <span>🛑</span> Detener
+                </button>
+                <button type="button" 
+                        onclick="app.snoozeActiveAlarm()" 
+                        class="px-4 py-3 rounded-xl bg-amber-600/20 hover:bg-amber-600/30 text-amber-300 font-semibold text-sm transition border border-amber-500/40 flex items-center justify-center gap-1.5">
+                    <span>⏱️</span> Posponer 10m
+                </button>
+                <button type="button" 
+                        onclick="app.renewActiveAlarmSubscription()" 
+                        class="px-4 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-sm transition shadow-lg shadow-emerald-600/30 flex items-center justify-center gap-1.5">
+                    <span>🔄</span> Renovar (+1m)
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MAIN HEADER -->
+    <header class="border-b border-slate-800/80 bg-slate-900/60 backdrop-blur-md sticky top-0 z-30">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
+            
+            <!-- Logo & Brand -->
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-rose-500 flex items-center justify-center text-white shadow-lg shadow-indigo-500/25">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                    </svg>
+                </div>
+                <div>
+                    <div class="flex items-center gap-2">
+                        <span class="font-extrabold text-lg tracking-tight text-white">Sub<span class="text-indigo-400">Alert</span></span>
+                        <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 uppercase tracking-wider">Visual</span>
+                    </div>
+                    <span class="hidden sm:block text-[11px] text-slate-400">Generador de Alertas de Vencimiento de Suscripciones</span>
+                </div>
+            </div>
+
+            <!-- Header Right Menu -->
+            <div class="flex items-center gap-3">
+                <!-- Urgent indicator pill -->
+                <span id="header-alert-badge" class="hidden px-2.5 py-1 rounded-full text-xs font-bold bg-rose-500/20 text-rose-300 border border-rose-500/40 animate-pulse">
+                    0 urgentes
+                </span>
+
+                <!-- Quick Sound Test -->
+                <button type="button" 
+                        onclick="app.testSound()" 
+                        class="p-2 rounded-xl text-slate-300 hover:text-white bg-slate-800/80 hover:bg-slate-700 transition border border-slate-700/80 text-xs font-medium flex items-center gap-1.5"
+                        title="Probar sonido de alarma">
+                    <svg class="w-4 h-4 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
+                    <span class="hidden md:inline">Sonido</span>
+                </button>
+
+                <!-- Settings button -->
+                <button type="button" 
+                        onclick="app.openSettingsModal()" 
+                        class="p-2 rounded-xl text-slate-300 hover:text-white bg-slate-800/80 hover:bg-slate-700 transition border border-slate-700/80 text-xs font-medium flex items-center gap-1.5"
+                        title="Configuración y Ajustes">
+                    <svg class="w-4 h-4 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+                    <span class="hidden md:inline">Ajustes</span>
+                </button>
+
+                <!-- User profile badge & logout -->
+                <div class="flex items-center gap-2 pl-2 border-l border-slate-800">
+                    <div id="user-avatar-initial" class="w-8 h-8 rounded-full bg-indigo-600/30 border border-indigo-500/50 flex items-center justify-center font-bold text-xs text-indigo-300">
+                        U
+                    </div>
+                    <span id="user-display-name" class="hidden sm:inline text-xs font-semibold text-slate-200">Usuario</span>
+                    <button type="button" 
+                            onclick="app.logout()" 
+                            class="p-1.5 text-slate-400 hover:text-rose-400 transition" 
+                            title="Cerrar sesión">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- CONTENT WRAPPER -->
+    <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+
+        <!-- 1. AUTH VIEW (When not logged in) -->
+        <section id="auth-section" class="max-w-md mx-auto my-12 hidden">
+            <div class="glass-panel p-8 rounded-3xl border border-slate-800 shadow-2xl">
+                <div class="text-center mb-6">
+                    <div class="w-14 h-14 rounded-2xl bg-gradient-to-tr from-indigo-600 to-rose-500 flex items-center justify-center text-white shadow-xl mx-auto mb-3">
+                        <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
+                    </div>
+                    <h1 class="text-2xl font-bold text-white">Bienvenido a SubAlert</h1>
+                    <p class="text-sm text-slate-400 mt-1">Controla el vencimiento de tus suscripciones con alarmas visuales y acústicas.</p>
+                </div>
+
+                <!-- 1-Click Demo Login Button -->
+                <button type="button" 
+                        onclick="app.loginDemo()" 
+                        class="w-full py-3 px-4 rounded-xl font-bold text-sm bg-gradient-to-r from-indigo-600 via-purple-600 to-rose-600 hover:opacity-95 text-white shadow-lg shadow-indigo-600/30 transition flex items-center justify-center gap-2 mb-6">
+                    <span>⚡</span> Entrar como Invitado / Demo (1 Clic)
+                </button>
+
+                <div class="relative flex items-center justify-center mb-6">
+                    <div class="border-t border-slate-800 w-full"></div>
+                    <span class="bg-slate-900 px-3 text-xs text-slate-500 uppercase font-semibold">o con tu cuenta</span>
+                    <div class="border-t border-slate-800 w-full"></div>
+                </div>
+
+                <!-- Tabs: Iniciar sesión / Registrarse -->
+                <div class="grid grid-cols-2 p-1 bg-slate-950/80 rounded-xl mb-6 border border-slate-800">
+                    <button id="tab-btn-login" onclick="app.toggleAuthMode('login')" class="py-2 text-xs font-bold rounded-lg bg-indigo-600 text-white transition">Iniciar Sesión</button>
+                    <button id="tab-btn-register" onclick="app.toggleAuthMode('register')" class="py-2 text-xs font-bold rounded-lg text-slate-400 hover:text-white transition">Crear Cuenta</button>
+                </div>
+
+                <!-- Form Login -->
+                <form id="form-login" onsubmit="app.login(event)" class="space-y-4">
+                    <div>
+                        <label class="block text-xs font-medium text-slate-300 mb-1">Correo electrónico</label>
+                        <input type="email" id="login-email" required placeholder="tu@email.com" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-300 mb-1">Contraseña</label>
+                        <input type="password" id="login-password" required placeholder="••••••••" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500">
+                    </div>
+                    <button type="submit" class="w-full py-2.5 px-4 rounded-xl font-semibold text-sm bg-indigo-600 hover:bg-indigo-500 text-white transition mt-2">
+                        Iniciar Sesión
+                    </button>
+                </form>
+
+                <!-- Form Register -->
+                <form id="form-register" onsubmit="app.register(event)" class="space-y-4 hidden">
+                    <div>
+                        <label class="block text-xs font-medium text-slate-300 mb-1">Tu Nombre</label>
+                        <input type="text" id="reg-name" required placeholder="Sergio" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-300 mb-1">Correo electrónico</label>
+                        <input type="email" id="reg-email" required placeholder="tu@email.com" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-300 mb-1">Contraseña (mínimo 6 caracteres)</label>
+                        <input type="password" id="reg-password" minlength="6" required placeholder="••••••••" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500">
+                    </div>
+                    <button type="submit" class="w-full py-2.5 px-4 rounded-xl font-semibold text-sm bg-indigo-600 hover:bg-indigo-500 text-white transition mt-2">
+                        Registrarse Gratis
+                    </button>
+                </form>
+            </div>
+        </section>
+
+        <!-- 2. MAIN DASHBOARD VIEW -->
+        <section id="dashboard-section" class="space-y-6">
+
+            <!-- Urgent Global Alert Banner (Shows when subscriptions trigger alert) -->
+            <div id="urgent-banner" class="hidden p-4 rounded-2xl bg-gradient-to-r from-red-950/80 via-slate-900 to-red-950/80 border border-red-500/80 shadow-[0_0_25px_rgba(239,68,68,0.3)] flex items-center justify-between gap-4">
+                <div class="flex items-center gap-3">
+                    <span class="text-2xl animate-bounce">🚨</span>
+                    <div>
+                        <h4 class="text-sm font-bold text-red-200">¡Atención! Vencimientos Próximos Detectados</h4>
+                        <p id="urgent-banner-text" class="text-xs text-red-300/80 mt-0.5">Tienes suscripciones en periodo de aviso.</p>
+                    </div>
+                </div>
+                <button type="button" 
+                        onclick="app.setUrgencyFilter('critical')" 
+                        class="px-3.5 py-1.5 rounded-xl bg-red-600 hover:bg-red-500 text-white text-xs font-bold transition whitespace-nowrap shadow-md">
+                    Ver Críticas
+                </button>
+            </div>
+
+            <!-- Top Metrics Row -->
+            <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                <!-- Gasto Mensual -->
+                <div class="glass-panel p-4 sm:p-5 rounded-2xl border border-slate-800">
+                    <div class="flex items-center justify-between text-slate-400 text-xs font-medium mb-2">
+                        <span>Gasto Mensual</span>
+                        <span class="text-indigo-400 font-semibold">Mensual</span>
+                    </div>
+                    <div id="metric-monthly" class="text-2xl sm:text-3xl font-extrabold text-white">0.00 €</div>
+                    <div class="text-[11px] text-slate-500 mt-1">Suma de renovaciones activas</div>
+                </div>
+
+                <!-- Gasto Anual Proyectado -->
+                <div class="glass-panel p-4 sm:p-5 rounded-2xl border border-slate-800">
+                    <div class="flex items-center justify-between text-slate-400 text-xs font-medium mb-2">
+                        <span>Proyección Anual</span>
+                        <span class="text-emerald-400 font-semibold">12 meses</span>
+                    </div>
+                    <div id="metric-yearly" class="text-2xl sm:text-3xl font-extrabold text-white">0.00 €</div>
+                    <div class="text-[11px] text-slate-500 mt-1">Costo total proyectado al año</div>
+                </div>
+
+                <!-- Suscripciones Activas -->
+                <div class="glass-panel p-4 sm:p-5 rounded-2xl border border-slate-800">
+                    <div class="flex items-center justify-between text-slate-400 text-xs font-medium mb-2">
+                        <span>Suscripciones</span>
+                        <span class="text-blue-400 font-semibold">En Seguimiento</span>
+                    </div>
+                    <div id="metric-active" class="text-2xl sm:text-3xl font-extrabold text-white">0</div>
+                    <div class="text-[11px] text-slate-500 mt-1">Servicios registrados</div>
+                </div>
+
+                <!-- Alertas Críticas -->
+                <div class="glass-panel p-4 sm:p-5 rounded-2xl border border-slate-800">
+                    <div class="flex items-center justify-between text-slate-400 text-xs font-medium mb-2">
+                        <span>Vencen Pronto / Hoy</span>
+                        <span class="text-rose-400 font-semibold">Urgente</span>
+                    </div>
+                    <div id="metric-critical" class="text-2xl sm:text-3xl font-extrabold text-rose-400">0</div>
+                    <div class="text-[11px] text-slate-500 mt-1">Menos de 3 días o vencidas</div>
+                </div>
+            </div>
+
+            <!-- Action Bar: Add Subscription & Presets & View Controls -->
+            <div class="glass-panel p-4 rounded-2xl border border-slate-800 space-y-4">
+                <div class="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4">
+                    
+                    <!-- Main Action Buttons Group: Añadir, Guardar, Deshacer, Reiniciar -->
+                    <div class="flex flex-wrap items-center gap-2">
+                        <!-- Add Button -->
+                        <button type="button" 
+                                onclick="app.openAddModal()" 
+                                class="px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-rose-600 hover:from-indigo-500 hover:to-rose-500 text-white font-bold text-xs shadow-lg shadow-indigo-600/25 transition flex items-center justify-center gap-1.5">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+                            <span>Añadir Suscripción</span>
+                        </button>
+
+                        <!-- Guardar Cambios Button -->
+                        <button type="button" 
+                                id="btn-save-changes"
+                                onclick="app.saveAllChanges()" 
+                                class="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs border border-emerald-500/50 shadow-md shadow-emerald-600/20 transition flex items-center justify-center gap-1.5"
+                                title="Guardar todos los cambios realizados (Ctrl+S)">
+                            <svg id="save-icon-normal" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                            <span id="save-btn-text">Guardar Cambios</span>
+                        </button>
+
+                        <!-- Deshacer Último Cambio Button -->
+                        <button type="button" 
+                                id="btn-undo-change"
+                                onclick="app.undoLastChange()" 
+                                disabled
+                                class="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed text-slate-200 font-semibold text-xs border border-slate-700 transition flex items-center justify-center gap-1.5"
+                                title="Deshacer el último cambio realizado (Ctrl+Z)">
+                            <svg class="w-4 h-4 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg>
+                            <span>Deshacer Último Cambio</span>
+                            <span id="undo-count-badge" class="hidden px-1.5 py-0.5 rounded-full text-[10px] bg-indigo-500 text-white font-mono font-bold leading-none">0</span>
+                        </button>
+
+                        <!-- Reiniciar Valores Button -->
+                        <button type="button" 
+                                onclick="app.confirmResetValues()" 
+                                class="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-red-950/60 hover:border-red-500/50 text-slate-300 hover:text-red-300 font-semibold text-xs border border-slate-700 transition flex items-center justify-center gap-1.5"
+                                title="Restablecer los valores iniciales por defecto">
+                            <svg class="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+                            <span>Reiniciar Valores</span>
+                        </button>
+                    </div>
+
+                    <!-- View Switcher -->
+                    <div class="flex items-center gap-1 bg-slate-900/90 p-1 rounded-xl border border-slate-800 text-xs font-medium self-start lg:self-auto">
+                        <button id="view-btn-cards" onclick="app.setView('cards')" class="px-3 py-1.5 rounded-lg bg-indigo-600/30 text-indigo-400 border border-indigo-500/50 transition flex items-center gap-1.5">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></svg>
+                            Tarjetas
+                        </button>
+                        <button id="view-btn-generator" onclick="app.setView('generator')" class="px-3 py-1.5 rounded-lg text-slate-400 hover:text-white transition flex items-center gap-1.5">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+                            Generador Visual
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Quick Presets Row -->
+                <div class="flex items-center gap-2 overflow-x-auto pb-1 text-xs">
+                    <span class="text-slate-400 font-semibold whitespace-nowrap flex items-center gap-1">
+                        <span>⚡</span> Plantillas rápidas:
+                    </span>
+                    <div id="presets-container" class="flex items-center gap-2"></div>
+                </div>
+            </div>
+
+            <!-- Search & Filters Toolbar -->
+            <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+                
+                <!-- Search input -->
+                <div class="relative flex-1 max-w-sm">
+                    <input type="text" 
+                           id="search-input" 
+                           placeholder="Buscar Netflix, Spotify, Gym..." 
+                           class="w-full bg-slate-900 border border-slate-800 rounded-xl pl-9 pr-4 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500">
+                    <svg class="w-4 h-4 text-slate-500 absolute left-3 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                </div>
+
+                <!-- Category dropdown -->
+                <div class="flex items-center gap-2">
+                    <select id="category-filter" class="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-300 focus:outline-none focus:border-indigo-500">
+                        <option value="all">Todas las categorías</option>
+                        <option value="Streaming Video">Streaming Video</option>
+                        <option value="Música">Música</option>
+                        <option value="Salud y Deporte">Salud y Deporte (Gym)</option>
+                        <option value="Software & IA">Software & IA</option>
+                        <option value="Gaming">Gaming</option>
+                        <option value="Servicios & Envíos">Servicios & Envíos</option>
+                        <option value="Otros">Otros</option>
+                    </select>
+                </div>
+
+                <!-- Urgency status filter pills -->
+                <div class="flex items-center gap-1.5 overflow-x-auto text-xs">
+                    <button type="button" data-filter="all" onclick="app.setUrgencyFilter('all')" class="filter-pill px-3 py-1.5 rounded-lg bg-indigo-600 text-white font-medium border border-indigo-500 transition whitespace-nowrap">
+                        Todos
+                    </button>
+                    <button type="button" data-filter="alerts" onclick="app.setUrgencyFilter('alerts')" class="filter-pill px-3 py-1.5 rounded-lg bg-slate-800/80 text-slate-400 hover:text-white font-medium border border-slate-700/60 transition whitespace-nowrap">
+                        🚨 Alertas Activas
+                    </button>
+                    <button type="button" data-filter="critical" onclick="app.setUrgencyFilter('critical')" class="filter-pill px-3 py-1.5 rounded-lg bg-slate-800/80 text-slate-400 hover:text-white font-medium border border-slate-700/60 transition whitespace-nowrap">
+                        🔴 Vence Hoy / Mañana
+                    </button>
+                    <button type="button" data-filter="warning" onclick="app.setUrgencyFilter('warning')" class="filter-pill px-3 py-1.5 rounded-lg bg-slate-800/80 text-slate-400 hover:text-white font-medium border border-slate-700/60 transition whitespace-nowrap">
+                        🟡 Próximos 7 días
+                    </button>
+                    <button type="button" data-filter="safe" onclick="app.setUrgencyFilter('safe')" class="filter-pill px-3 py-1.5 rounded-lg bg-slate-800/80 text-slate-400 hover:text-white font-medium border border-slate-700/60 transition whitespace-nowrap">
+                        🟢 Seguros
+                    </button>
+                </div>
+            </div>
+
+            <!-- VIEW 1: SUBSCRIPTION CARDS GRID -->
+            <div id="view-container-cards">
+                <div id="subscriptions-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                    <!-- Cards are rendered dynamically via JavaScript -->
+                </div>
+
+                <!-- Empty State -->
+                <div id="empty-state" class="hidden text-center py-16 px-4">
+                    <div class="w-16 h-16 rounded-3xl bg-slate-800/80 text-slate-500 flex items-center justify-center mx-auto mb-4">
+                        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+                    </div>
+                    <h3 class="text-lg font-bold text-slate-300">No se encontraron suscripciones</h3>
+                    <p class="text-xs text-slate-500 mt-1 max-w-sm mx-auto">No hay servicios que coincidan con tus filtros actuales. Prueba a cambiar el filtro o pulsa en "Añadir Suscripción".</p>
+                </div>
+            </div>
+
+            <!-- VIEW 2: VISUAL ALERT GENERATOR -->
+            <div id="view-container-generator" class="hidden space-y-6">
+                <div class="p-4 rounded-2xl bg-indigo-950/40 border border-indigo-500/30 flex items-center justify-between">
+                    <div>
+                        <h3 class="text-sm font-bold text-indigo-200">Generador de Alertas Visuales</h3>
+                        <p class="text-xs text-slate-400">Carteles y badges visuales listos para capturar, compartir o usar como recordatorio de alta visibilidad.</p>
+                    </div>
+                    <button type="button" 
+                            onclick="app.exportCalendarICS()" 
+                            class="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs transition flex items-center gap-1.5 shadow-md">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                        Descargar Calendario (.ICS)
+                    </button>
+                </div>
+
+                <div id="generator-cards-container" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <!-- Visual alert cards rendered dynamically -->
+                </div>
+            </div>
+
+        </section>
+    </main>
+
+    <!-- MODAL: ADD / EDIT SUBSCRIPTION -->
+    <div id="modal-subscription" class="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm hidden flex items-center justify-center p-4">
+        <div class="max-w-xl w-full bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-7 shadow-2xl overflow-y-auto max-h-[90vh]">
+            
+            <div class="flex items-center justify-between pb-4 border-b border-slate-800">
+                <h3 id="modal-sub-title" class="text-lg font-bold text-white">Nueva Suscripción</h3>
+                <button type="button" onclick="app.closeModal()" class="text-slate-400 hover:text-white p-1">&times;</button>
+            </div>
+
+            <form id="sub-form" onsubmit="app.saveSubscription(event)" class="space-y-4 mt-5">
+                <input type="hidden" id="sub-id">
+
+                <!-- Service Name & Category -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-300 mb-1">Nombre del Servicio *</label>
+                        <input type="text" id="sub-name" required placeholder="Netflix, Gimnasio, Spotify..." class="w-full bg-slate-800/80 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-indigo-500">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-300 mb-1">Categoría</label>
+                        <select id="sub-category" class="w-full bg-slate-800/80 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-indigo-500">
+                            <option value="Streaming Video">Streaming Video</option>
+                            <option value="Música">Música</option>
+                            <option value="Salud y Deporte">Salud y Deporte (Gym)</option>
+                            <option value="Software & IA">Software & IA</option>
+                            <option value="Gaming">Gaming</option>
+                            <option value="Servicios & Envíos">Servicios & Envíos</option>
+                            <option value="Almacenamiento">Almacenamiento en la nube</option>
+                            <option value="Otros">Otros</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Price, Currency & Cycle -->
+                <div class="grid grid-cols-3 gap-3">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-300 mb-1">Precio *</label>
+                        <input type="number" step="0.01" min="0" id="sub-price" required placeholder="17.99" class="w-full bg-slate-800/80 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-300 mb-1">Moneda</label>
+                        <select id="sub-currency" class="w-full bg-slate-800/80 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500">
+                            <option value="EUR">EUR (€)</option>
+                            <option value="USD">USD ($)</option>
+                            <option value="GBP">GBP (£)</option>
+                            <option value="MXN">MXN ($)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-300 mb-1">Periodicidad</label>
+                        <select id="sub-cycle" class="w-full bg-slate-800/80 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500">
+                            <option value="monthly">Mensual</option>
+                            <option value="yearly">Anual</option>
+                            <option value="quarterly">Trimestral</option>
+                            <option value="weekly">Semanal</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Renewal Date -->
+                <div>
+                    <label class="block text-xs font-semibold text-slate-300 mb-1">Fecha de Próximo Vencimiento / Cobro *</label>
+                    <input type="date" id="sub-renewal-date" required class="w-full bg-slate-800/80 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-indigo-500">
+                </div>
+
+                <!-- ALERT & ALARM CONFIGURATION BOX (CORE FEATURE) -->
+                <div class="p-4 rounded-2xl bg-indigo-950/30 border border-indigo-500/40 space-y-3">
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-bold text-indigo-300 uppercase tracking-wider flex items-center gap-1.5">
+                            <span>🔔</span> Configuración de Alerta
+                        </span>
+                        <span class="text-[11px] text-indigo-400">¿Cómo y cuándo avisar?</span>
+                    </div>
+
+                    <!-- Days before & Time -->
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-xs font-medium text-slate-300 mb-1">¿Cuándo te avisa?</label>
+                            <select id="sub-alert-days" class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500">
+                                <option value="0">El mismo día del vencimiento</option>
+                                <option value="1">1 día antes</option>
+                                <option value="2">2 días antes</option>
+                                <option value="3" selected>3 días antes (Recomendado)</option>
+                                <option value="5">5 días antes</option>
+                                <option value="7">7 días antes (1 semana)</option>
+                                <option value="14">14 días antes (2 semanas)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-slate-300 mb-1">Hora del aviso</label>
+                            <input type="time" id="sub-alert-time" value="09:00" class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500">
+                        </div>
+                    </div>
+
+                    <!-- Alert Type: Notification vs Alarm -->
+                    <div>
+                        <label class="block text-xs font-medium text-slate-300 mb-1">Tipo de Aviso</label>
+                        <div class="grid grid-cols-2 gap-2">
+                            <label class="flex items-center gap-2 p-2.5 rounded-xl border border-slate-700 bg-slate-800/80 cursor-pointer hover:border-indigo-500 transition">
+                                <input type="radio" name="alert_type_radio" value="alarm" checked onchange="document.getElementById('sub-alert-type').value='alarm'" class="text-indigo-600">
+                                <div class="text-xs">
+                                    <strong class="block text-white">🚨 Alarma Acústica</strong>
+                                    <span class="text-[11px] text-slate-400">Sonido + alerta visual</span>
+                                </div>
+                            </label>
+
+                            <label class="flex items-center gap-2 p-2.5 rounded-xl border border-slate-700 bg-slate-800/80 cursor-pointer hover:border-indigo-500 transition">
+                                <input type="radio" name="alert_type_radio" value="notification" onchange="document.getElementById('sub-alert-type').value='notification'" class="text-indigo-600">
+                                <div class="text-xs">
+                                    <strong class="block text-white">🔔 Notificación</strong>
+                                    <span class="text-[11px] text-slate-400">Aviso visual en pantalla</span>
+                                </div>
+                            </label>
+                        </div>
+                        <input type="hidden" id="sub-alert-type" value="alarm">
+                    </div>
+
+                    <!-- Sound Choice + Test Button -->
+                    <div>
+                        <label class="block text-xs font-medium text-slate-300 mb-1">Tono de Alarma</label>
+                        <div class="flex items-center gap-2">
+                            <select id="sub-sound" class="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500">
+                                <option value="cyber_pulse">⚡ Cyber Pulse (Sintetizador)</option>
+                                <option value="radar_alert">🚨 Radar / Sirena de Aviso</option>
+                                <option value="classic_beep">⏰ Despertador Digital Clásico</option>
+                                <option value="chime_zen">🔔 Campana Armónica Zen</option>
+                                <option value="ascending_melody">🎵 Melodía Ascendente</option>
+                            </select>
+                            <button type="button" 
+                                    onclick="app.testSound()" 
+                                    class="px-3 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold transition flex items-center gap-1">
+                                ▶ Probar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Icon & Brand Accent Color -->
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-300 mb-1">Icono</label>
+                        <select id="sub-icon" class="w-full bg-slate-800/80 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500">
+                            <option value="film">Película / Streaming</option>
+                            <option value="music">Música / Canciones</option>
+                            <option value="dumbbell">Gimnasio / Deporte</option>
+                            <option value="bot">IA / Software</option>
+                            <option value="package">Envíos / Paquete</option>
+                            <option value="gamepad-2">Videojuegos / Consola</option>
+                            <option value="tv">Televisión / Series</option>
+                            <option value="cloud">Nube / Cloud</option>
+                            <option value="activity">Salud / Fitness</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-300 mb-1">Color de Marca</label>
+                        <div class="flex items-center gap-2">
+                            <input type="color" id="sub-color" value="#6366f1" class="w-10 h-9 p-0.5 bg-slate-800 border border-slate-700 rounded-lg cursor-pointer">
+                            <span class="text-xs text-slate-400">Color distintivo</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Notes / Cancellation Tips -->
+                <div>
+                    <label class="block text-xs font-semibold text-slate-300 mb-1">Notas / Recordatorio (Opcional)</label>
+                    <input type="text" id="sub-notes" placeholder="Ej: Cancelar prueba gratuita antes del cobro o compartir cuenta" class="w-full bg-slate-800/80 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none focus:border-indigo-500">
+                </div>
+
+                <!-- Modal Action Buttons: Reiniciar valores, Deshacer, Guardar cambios -->
+                <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-4 border-t border-slate-800">
+                    <div class="flex items-center gap-2">
+                        <!-- Reiniciar campos del formulario -->
+                        <button type="button" 
+                                onclick="app.resetFormFields()" 
+                                class="px-3 py-2 rounded-xl text-xs font-semibold text-amber-400 hover:bg-amber-950/40 border border-amber-500/30 transition flex items-center justify-center gap-1.5"
+                                title="Reiniciar todos los campos a sus valores iniciales">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+                            <span>Reiniciar campos</span>
+                        </button>
+                        <!-- Deshacer cambios en el modal -->
+                        <button type="button" 
+                                id="btn-modal-undo"
+                                onclick="app.undoFormChanges()" 
+                                disabled
+                                class="px-3 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-800 border border-slate-700 transition flex items-center justify-center gap-1.5"
+                                title="Deshacer cambios realizados en el formulario">
+                            <svg class="w-3.5 h-3.5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg>
+                            <span>Deshacer cambios</span>
+                        </button>
+                    </div>
+
+                    <div class="flex items-center justify-end gap-2">
+                        <button type="button" onclick="app.closeModal()" class="px-3.5 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white transition">
+                            Cancelar
+                        </button>
+                        <button type="submit" class="px-5 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-600/30 transition flex items-center justify-center gap-1.5">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                            <span>Guardar Cambios</span>
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL: SETTINGS & CUSTOMIZATION ("configurar todo a su gusto") -->
+    <div id="modal-settings" class="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm hidden flex items-center justify-center p-4">
+        <div class="max-w-md w-full bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-7 shadow-2xl">
+            <div class="flex items-center justify-between pb-4 border-b border-slate-800">
+                <h3 class="text-lg font-bold text-white flex items-center gap-2">
+                    <span>⚙️</span> Ajustes & Preferencias
+                </h3>
+                <button type="button" onclick="app.closeSettingsModal()" class="text-slate-400 hover:text-white p-1">&times;</button>
+            </div>
+
+            <form onsubmit="app.saveSettings(event)" class="space-y-4 mt-5">
+                <!-- Currency -->
+                <div>
+                    <label class="block text-xs font-semibold text-slate-300 mb-1">Moneda Principal</label>
+                    <select id="settings-currency" class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500">
+                        <option value="EUR">Euro (€)</option>
+                        <option value="USD">Dólar ($)</option>
+                        <option value="GBP">Libra (£)</option>
+                        <option value="MXN">Peso Mexicano ($)</option>
+                    </select>
+                </div>
+
+                <!-- Default alert days -->
+                <div>
+                    <label class="block text-xs font-semibold text-slate-300 mb-1">Días de aviso por defecto para nuevas suscripciones</label>
+                    <select id="settings-default-days" class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500">
+                        <option value="0">El mismo día</option>
+                        <option value="1">1 día antes</option>
+                        <option value="2">2 días antes</option>
+                        <option value="3">3 días antes</option>
+                        <option value="5">5 días antes</option>
+                        <option value="7">7 días antes</option>
+                    </select>
+                </div>
+
+                <!-- Default alert type -->
+                <div>
+                    <label class="block text-xs font-semibold text-slate-300 mb-1">Tipo de aviso predeterminado</label>
+                    <select id="settings-default-type" class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500">
+                        <option value="alarm">🚨 Alarma Acústica Continua</option>
+                        <option value="notification">🔔 Notificación Estándar</option>
+                    </select>
+                </div>
+
+                <!-- Default alarm sound -->
+                <div>
+                    <label class="block text-xs font-semibold text-slate-300 mb-1">Tono acústico predeterminado</label>
+                    <select id="settings-sound" class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500">
+                        <option value="cyber_pulse">⚡ Cyber Pulse</option>
+                        <option value="radar_alert">🚨 Radar Alert</option>
+                        <option value="classic_beep">⏰ Digital Beep</option>
+                        <option value="chime_zen">🔔 Zen Bell Chime</option>
+                        <option value="ascending_melody">🎵 Melodía Ascendente</option>
+                    </select>
+                </div>
+
+                <!-- Volume slider -->
+                <div>
+                    <div class="flex items-center justify-between text-xs font-semibold text-slate-300 mb-1">
+                        <span>Volumen de la Alarma</span>
+                        <span id="volume-val-display" class="text-indigo-400 font-mono">80%</span>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <input type="range" id="settings-volume" min="0" max="1" step="0.05" value="0.8" class="w-full">
+                        <button type="button" onclick="app.testSound(document.getElementById('settings-sound').value)" class="p-2 bg-slate-800 rounded-lg text-slate-300 hover:text-white text-xs border border-slate-700" title="Probar volumen">
+                            🔊
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Desktop Notifications Permission -->
+                <div class="pt-2">
+                    <button type="button" 
+                            onclick="app.requestDesktopNotifications()" 
+                            class="w-full py-2.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-indigo-300 border border-indigo-500/30 text-xs font-semibold transition flex items-center justify-center gap-2">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+                        Activar Notificaciones de Escritorio
+                    </button>
+                </div>
+
+                <!-- Calendar Export -->
+                <div class="pt-1">
+                    <button type="button" 
+                            onclick="app.exportCalendarICS()" 
+                            class="w-full py-2.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs font-semibold transition flex items-center justify-center gap-2">
+                        <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                        Exportar Alertas a Calendario (.ICS)
+                    </button>
+                </div>
+
+                <div class="flex items-center justify-end gap-3 pt-4 border-t border-slate-800">
+                    <button type="button" onclick="app.closeSettingsModal()" class="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white transition">
+                        Cerrar
+                    </button>
+                    <button type="submit" class="px-5 py-2 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-500 text-white transition">
+                        Guardar Ajustes
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL: CONFIRM RESET VALUES -->
+    <div id="modal-confirm-reset" class="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm hidden flex items-center justify-center p-4">
+        <div class="max-w-md w-full bg-slate-900 border border-slate-700 rounded-3xl p-6 sm:p-7 shadow-2xl text-center">
+            <div class="w-14 h-14 rounded-2xl bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center justify-center mx-auto mb-4">
+                <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+            </div>
+            <h3 class="text-xl font-bold text-white mb-2">¿Reiniciar todos los valores?</h3>
+            <p class="text-xs text-slate-400 mb-6 leading-relaxed">
+                Se restablecerán las suscripciones y los parámetros a los valores iniciales por defecto (Netflix, Spotify, Gimnasio, etc.).
+                <br><br>
+                <span class="text-emerald-400 font-medium">✓ Despreocúpate: Se creará un punto de restauración automático para que puedas usar el botón "Deshacer" en cualquier momento.</span>
+            </p>
+            <div class="flex items-center justify-center gap-3">
+                <button type="button" 
+                        onclick="document.getElementById('modal-confirm-reset').classList.add('hidden')" 
+                        class="px-4 py-2.5 rounded-xl text-xs font-semibold text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 transition">
+                    Cancelar
+                </button>
+                <button type="button" 
+                        onclick="app.executeResetValues()" 
+                        class="px-5 py-2.5 rounded-xl text-xs font-bold text-white bg-gradient-to-r from-amber-600 to-rose-600 hover:from-amber-500 hover:to-rose-500 shadow-lg shadow-rose-600/20 transition flex items-center gap-1.5">
+                    <span>↺</span> Sí, reiniciar valores
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- SCRIPTS -->
+    <script src="/static/js/audio.js"></script>
+    <script src="/static/js/notifications.js"></script>
+    <script src="/static/js/app.js"></script>
+</body>
+</html>
