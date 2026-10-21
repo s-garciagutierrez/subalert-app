@@ -51,19 +51,6 @@
 
 ---
 
-## 💻 Cómo Iniciar la Aplicación
-
-La aplicación ya se encuentra ejecutándose localmente en:
-👉 **[http://127.0.0.1:5000](http://127.0.0.1:5000)**
-
-Para iniciarla en cualquier momento:
-1. Haz doble clic en el archivo `run.bat` ubicado en la carpeta del proyecto.
-2. O bien, ejecuta desde la consola:
-```powershell
-python app.py
-```
-
----
 
 ## 📁 Estructura del Proyecto
 
